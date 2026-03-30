@@ -1,0 +1,23 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Editor / IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+
+# Build or dist folders (if you ever add any)
+dist/
+build/
+
+# Do NOT ignore the main files
+!index.html
+!lottery-data.json
+!README.md
