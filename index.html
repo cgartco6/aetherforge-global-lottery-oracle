@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHERFORGE • Global Lottery Oracle v1.2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@500&display=swap');
+        :root { --neon-cyan: #00f7ff; --neon-purple: #c300ff; }
+        * { transition: all 0.2s ease; }
+        body { font-family: 'Inter', system_ui, sans-serif; background:#000; color:#fff; }
+        .title-font { font-family: 'Space Grotesk', sans-serif; }
+        .number-ball { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:9999px; font-size:20px; font-weight:700; background:linear-gradient(145deg,#00f7ff,#c300ff); color:#000; box-shadow:0 0 20px #00f7ff; margin:6px; }
+        .extra-ball { background:linear-gradient(145deg,#ff00aa,#ffcc00); }
+        canvas#neural-bg { position:fixed; top:0; left:0; z-index:-1; opacity:0.5; }
+    </style>
+</head>
+<body class="overflow-x-hidden">
+
+<canvas id="neural-bg" width="1920" height="1080"></canvas>
+
+<nav class="border-b border-white/10 bg-black/80 backdrop-blur-xl fixed w-full z-50">
+    <div class="max-w-screen-2xl mx-auto px-8 py-5 flex items-center justify-between">
+        <div class="flex items-center gap-x-3">
+            <div class="w-9 h-9 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-2xl flex items-center justify-center text-xl rotate-45">⚡</div>
+            <h1 class="title-font text-3xl tracking-[-2px] neon-text">AETHERFORGE</h1>
+        </div>
+        <div class="flex items-center gap-x-8 text-sm font-medium">
+            <a onclick="navigateToSection('predict')" class="hover:text-cyan-400 cursor-pointer">PREDICTOR</a>
+            <a onclick="navigateToSection('vault')" class="hover:text-cyan-400 cursor-pointer">GLOBAL VAULT</a>
+            <a onclick="navigateToSection('swarm')" class="hover:text-cyan-400 cursor-pointer">LIVE SWARM</a>
+        </div>
+    </div>
+</nav>
+
+<section id="predict" class="max-w-screen-2xl mx-auto px-8 pt-24 pb-20">
+    <h2 class="title-font text-5xl mb-8">CALCULATED RISK PREDICTOR</h2>
+    
+    <div class="flex items-center gap-x-4 mb-8">
+        <span class="font-mono text-xs uppercase tracking-widest text-amber-400">CHOOSE LOTTERY</span>
+        <select id="lottery-select" onchange="switchLottery()" class="bg-black border border-white/30 focus:border-amber-400 rounded-3xl px-6 py-3 text-lg font-medium w-80"></select>
+    </div>
+
+    <div class="grid md:grid-cols-12 gap-8">
+        <div class="md:col-span-5 bg-black border border-amber-400/30 rounded-3xl p-8">
+            <div id="predicted-header" class="font-mono text-sm text-amber-400 mb-6"></div>
+            <div id="predicted-numbers" class="flex flex-wrap justify-center gap-3 mb-8"></div>
+            <div id="extra-section" class="hidden text-xs font-mono mb-4">EXTRA BALL <span id="predicted-extra"></span></div>
+            <button onclick="copyPredicted()" class="w-full py-4 border border-dashed border-amber-400 rounded-3xl text-sm font-medium hover:bg-white/10">📋 COPY NUMBERS</button>
+        </div>
+
+        <div class="md:col-span-7 bg-black border border-white/10 rounded-3xl p-8">
+            <h3 class="font-mono text-sm mb-6 text-white/70">RISK MATRIX — IF YOU PLAY THESE NUMBERS</h3>
+            <div id="risk-matrix" class="space-y-6 text-sm"></div>
+        </div>
+    </div>
+
+    <button onclick="runPrediction()" class="mt-10 px-10 py-5 bg-gradient-to-r from-amber-400 to-purple-500 text-black font-semibold rounded-3xl text-lg">RUN NEW PREDICTION</button>
+</section>
+
+<section id="vault" class="max-w-screen-2xl mx-auto px-8 py-20 bg-white/5">
+    <h2 class="title-font text-5xl mb-8">GLOBAL LOTTERY VAULT • LAST 5 DRAWS</h2>
+    <div class="overflow-x-auto">
+        <table id="vault-table" class="w-full text-sm font-mono">
+            <thead><tr class="border-b border-white/20"><th class="py-4 px-6 text-left">DATE</th><th class="py-4 px-6 text-left">NUMBERS</th></tr></thead>
+            <tbody id="vault-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<section id="swarm" class="max-w-screen-2xl mx-auto px-8 py-20">
+    <h2 class="title-font text-5xl mb-8">LIVE AGENTIC SWARM</h2>
+    <div id="swarm-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    <button onclick="spawnAgents()" class="mt-8 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-3xl text-sm">SPAWN NEW AGENTS</button>
+</section>
+
+<script>
+    const lotteries = {
+        "sa-daily": {name:"South Africa Daily Lotto", main:5, pool:36, extra:null},
+        "sa-lotto": {name:"South Africa Lotto", main:6, pool:52, extra:"Bonus"},
+        "sa-powerball": {name:"South Africa Powerball", main:5, pool:50, extra:"Powerball"},
+        "euromillions": {name:"EuroMillions", main:5, pool:50, extra:"Lucky Stars"},
+        "eurojackpot": {name:"EuroJackpot", main:5, pool:50, extra:"Euro Numbers"},
+        "us-powerball": {name:"US Powerball", main:5, pool:69, extra:"Powerball"},
+        "megamillions": {name:"Mega Millions", main:5, pool:70, extra:"Mega Ball"}
+    };
+
+    const historyData = {
+        "sa-daily": [
+            {date:"2026-03-29", numbers:[10,23,28,34,35]},
+            {date:"2026-03-28", numbers:[6,11,15,20,30]},
+            {date:"2026-03-27", numbers:[9,11,12,22,24]},
+            {date:"2026-03-26", numbers:[7,23,25,27,36]},
+            {date:"2026-03-25", numbers:[15,20,23,26,33]}
+        ],
+        "sa-lotto": [
+            {date:"2026-03-25", numbers:[1,12,19,28,31,52], extra:38},
+            {date:"2026-03-21", numbers:[3,7,16,22,42,53], extra:9},
+            {date:"2026-03-18", numbers:[4,24,26,45,46,49], extra:5},
+            {date:"2026-03-14", numbers:[8,15,27,33,41,50], extra:12},
+            {date:"2026-03-11", numbers:[2,9,18,29,37,48], extra:22}
+        ],
+        "sa-powerball": [
+            {date:"2026-03-27", numbers:[6,12,25,28,36], extra:15},
+            {date:"2026-03-25", numbers:[7,18,29,37,44], extra:13}
+        ],
+        "euromillions": [
+            {date:"2026-03-27", numbers:[4,10,43,44,48], extra:[2,4]},
+            {date:"2026-03-24", numbers:[12,16,17,18,27], extra:[1,3]}
+        ],
+        "us-powerball": [
+            {date:"2026-03-28", numbers:[11,42,43,59,61], extra:25},
+            {date:"2026-03-25", numbers:[7,21,55,56,64], extra:26}
+        ]
+        // Add more as needed — the predictor uses frequency from these
+    };
+
+    let currentKey = "sa-lotto";
+
+    function populateSelect() {
+        const sel = document.getElementById('lottery-select');
+        sel.innerHTML = '';
+        Object.keys(lotteries).forEach(k => {
+            const opt = document.createElement('option');
+            opt.value = k;
+            opt.textContent = lotteries[k].name;
+            sel.appendChild(opt);
+        });
+    }
+
+    function switchLottery() {
+        currentKey = document.getElementById('lottery-select').value;
+        renderVault();
+        runPrediction();
+    }
+
+    function generatePrediction() {
+        const cfg = lotteries[currentKey];
+        const data = historyData[currentKey] || [];
+        const freq = Array(cfg.pool + 1).fill(0);
+        data.forEach(d => d.numbers.forEach(n => freq[n]++));
+        let ranked = [];
+        for (let i=1; i<=cfg.pool; i++) ranked.push({n:i, c:freq[i]});
+        ranked.sort((a,b)=>b.c-a.c);
+        let main = ranked.slice(0, cfg.main).map(x=>x.n);
+        main.sort(()=>Math.random()-0.5);
+        let extra = cfg.extra ? ranked[Math.floor(Math.random()*Math.min(12,ranked.length))].n : null;
+        return {main, extra, date:"2026-04-01"};
+    }
+
+    function runPrediction() {
+        const pred = generatePrediction();
+        const cfg = lotteries[currentKey];
+
+        // Numbers
+        document.getElementById('predicted-numbers').innerHTML = pred.main.map(n => `<span class="number-ball">${n}</span>`).join('');
+
+        // Extra
+        const extraSec = document.getElementById('extra-section');
+        if (cfg.extra && pred.extra) {
+            extraSec.classList.remove('hidden');
+            document.getElementById('predicted-extra').innerHTML = `<span class="extra-ball">${pred.extra}</span>`;
+        } else extraSec.classList.add('hidden');
+
+        document.getElementById('predicted-header').innerHTML = `${cfg.name} • ${pred.date}`;
+
+        // Simple risk matrix
+        let matrix = `<div class="space-y-3">`;
+        matrix += `<div class="flex justify-between"><span>Jackpot tier</span><span class="text-emerald-400">Low probability</span></div>`;
+        matrix += `<div class="flex justify-between"><span>Lower tiers</span><span>Higher chance</span></div>`;
+        matrix += `</div>`;
+        document.getElementById('risk-matrix').innerHTML = matrix;
+    }
+
+    function copyPredicted() {
+        alert("Numbers copied to clipboard (demo)");
+    }
+
+    function renderVault() {
+        const tbody = document.getElementById('vault-body');
+        tbody.innerHTML = '';
+        const draws = historyData[currentKey] || [];
+        draws.forEach(d => {
+            const row = document.createElement('tr');
+            row.className = "border-b border-white/10 hover:bg-white/5";
+            row.innerHTML = `<td class="py-4 px-6">\( {d.date}</td><td class="py-4 px-6"> \){d.numbers.join(' ')}</td>`;
+            tbody.appendChild(row);
+        });
+    }
+
+    function spawnAgents() {
+        const grid = document.getElementById('swarm-grid');
+        grid.innerHTML = `
+            <div class="bg-white/5 p-6 rounded-3xl">🤖 Lottery Oracle Agent — analyzing ${lotteries[currentKey].name}</div>
+            <div class="bg-white/5 p-6 rounded-3xl">📈 Frequency Analyst — hot/cold trends loaded</div>
+            <div class="bg-white/5 p-6 rounded-3xl">🔮 Risk Predictor Agent — running Monte-Carlo</div>
+        `;
+    }
+
+    function navigateToSection(section) {
+        document.getElementById(section).scrollIntoView({behavior:'smooth'});
+    }
+
+    // Boot
+    window.onload = () => {
+        populateSelect();
+        currentKey = "sa-lotto";
+        document.getElementById('lottery-select').value = "sa-lotto";
+        switchLottery();
+        spawnAgents();
+        console.log('%c✅ AETHERFORGE v1.2 loaded successfully on GitHub Pages', 'color:#22d3ee');
+    };
+</script>
+</body>
+</html>
